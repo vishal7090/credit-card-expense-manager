@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppConfig, CardProfile } from '../types';
-import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check, Search, X, ChevronDown, Download, FileJson } from 'lucide-react';
+import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check, Search, X, ChevronDown, Download, FileJson, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 // Bank icon/logo representations for visual registry distinction
 const getBankLogoDetails = (bankName: string) => {
@@ -199,6 +199,18 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
   const [newCardNum, setNewCardNum] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [cardNumError, setCardNumError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [shakeInput, setShakeInput] = useState(false);
+
+  const triggerError = (msg: string) => {
+    setCardNumError(msg);
+    if (msg) {
+      setShakeInput(true);
+      setTimeout(() => setShakeInput(false), 500);
+    }
+  };
 
   // Inline editing states for quick actions without scrolling down or up the form
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -271,37 +283,48 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
 
   const handleAddCard = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingCard) return;
     
     // Custom regex pattern to match exactly 4 numeric characters
     const numericFourDigitsPattern = /^[0-9]{4}$/;
     
     if (!numericFourDigitsPattern.test(newCardNum)) {
-      setCardNumError('Last 4 Digits must be exactly 4 numeric characters (e.g. 4991).');
+      triggerError('Last 4 Digits must be exactly 4 numeric characters (e.g. 4991).');
       return;
     }
     if (config.cards.some(c => c.cardNumber === newCardNum)) {
-      setCardNumError('A card profile with these last 4 digits already exists in the registry.');
+      triggerError('A card profile with these last 4 digits already exists in the registry.');
       return;
     }
 
     setCardNumError('');
+    setIsSavingCard(true);
 
-    const newCard: CardProfile = {
-      id: Math.random().toString(36).substr(2, 9),
-      bankName: newBank.toUpperCase(),
-      cardNumber: newCardNum,
-      password: newPassword || undefined,
-      isActive: true
-    };
+    // Briefly simulate registering the profile asynchronously (800ms)
+    setTimeout(() => {
+      const newCard: CardProfile = {
+        id: Math.random().toString(36).substr(2, 9),
+        bankName: newBank.toUpperCase(),
+        cardNumber: newCardNum,
+        password: newPassword || undefined,
+        isActive: true
+      };
 
-    const updatedCards = [...config.cards, newCard];
-    onUpdateConfig({
-      ...config,
-      cards: updatedCards
-    });
+      const updatedCards = [...config.cards, newCard];
+      onUpdateConfig({
+        ...config,
+        cards: updatedCards
+      });
 
-    setNewCardNum('');
-    setNewPassword('');
+      setNewCardNum('');
+      setNewPassword('');
+      setShowPassword(false);
+      setIsSavingCard(false);
+      setShowSuccessToast(true);
+      setTimeout(() => {
+        setShowSuccessToast(false);
+      }, 2000);
+    }, 800);
   };
 
   const handleDeleteCard = (id: string) => {
@@ -779,7 +802,23 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
         </div>
 
         {/* Add Card Form */}
-        <form id="add-card-profile-form" onSubmit={handleAddCard} className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-4">
+        <form id="add-card-profile-form" onSubmit={handleAddCard} className="relative overflow-hidden bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-4">
+          {/* Success Overlay Toast */}
+          {showSuccessToast && (
+            <div 
+              id="card-success-toast" 
+              className="absolute inset-0 bg-slate-900/90 backdrop-blur-xs flex flex-col items-center justify-center text-center p-4 z-40 transition-all duration-350"
+            >
+              <div className="bg-emerald-500 text-white rounded-full p-2 mb-2 shadow-md shadow-emerald-500/20 animate-bounce">
+                <Check className="w-5 h-5 stroke-[3]" />
+              </div>
+              <h5 className="font-sans font-semibold text-white text-xs">Profile Registered successfully!</h5>
+              <p className="font-sans text-[10px] text-emerald-300 mt-1 max-w-[245px]">
+                The bank statement target was securely added to your local security registry.
+              </p>
+            </div>
+          )}
+
           <h4 className="font-sans font-medium text-xs text-slate-700 flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add Statement Card Target
           </h4>
@@ -822,7 +861,7 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
                   } else if (!/^[0-9]{4}$/.test(numericFiltered)) {
                     setCardNumError('Last 4 Digits must be exactly four numeric characters.');
                   } else if (config.cards.some(c => c.cardNumber === numericFiltered)) {
-                    setCardNumError('A profile with these last 4 digits already exists.');
+                    triggerError('A profile with these last 4 digits already exists.');
                   } else {
                     setCardNumError('');
                   }
@@ -831,7 +870,7 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
                   cardNumError 
                     ? 'border-red-400 text-red-900 placeholder-red-300 focus:border-red-500' 
                     : 'border-gray-200 text-gray-700 placeholder-gray-450 focus:border-blue-500'
-                }`}
+                } ${shakeInput ? 'animate-shake' : ''}`}
               />
               {cardNumError && (
                 <p id="card-last4-error-msg" className="text-xxs text-red-600 font-semibold mt-1 flex items-center gap-1 animate-pulse">
@@ -841,24 +880,81 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
             </div>
             <div>
               <label className="block text-xxs font-semibold text-gray-500 mb-1">Decryption Password (Optional)</label>
-              <input 
-                id="input-card-password"
-                type="text" 
-                placeholder="Password used to open PDF"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 placeholder-gray-400 focus:border-blue-500 focus:outline-hidden"
-              />
+              <div className="relative">
+                <input 
+                  id="input-card-password"
+                  type={showPassword ? 'text' : 'password'} 
+                  placeholder="Password used to open PDF"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full rounded-md border border-gray-200 bg-white pl-3 pr-10 py-1.5 text-xs text-gray-700 placeholder-gray-400 focus:border-blue-500 focus:outline-hidden"
+                />
+                <button
+                  id="toggle-password-visibility-btn"
+                  type="button"
+                  onClick={() => setShowPassword(prev => !prev)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-500 transition-colors cursor-pointer"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex justify-end pt-1">
-            <button
-              id="submit-add-card-btn"
-              type="submit"
-              className="bg-slate-800 hover:bg-slate-900 text-white font-sans text-xs font-medium px-4 py-1.5 rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Save Card Profile
-            </button>
+          <div className="flex justify-end gap-2 pt-1">
+            <div className="relative group">
+              <button
+                id="reset-add-card-btn"
+                type="button"
+                disabled={isSavingCard}
+                onClick={() => {
+                  setNewBank('HDFC');
+                  setNewCardNum('');
+                  setNewPassword('');
+                  setCardNumError('');
+                  setShowPassword(false);
+                }}
+                className={`border font-sans text-xs font-medium px-4 py-1.5 rounded-md flex items-center gap-1.5 transition-colors ${
+                  isSavingCard
+                    ? 'bg-gray-50 border-gray-150 text-gray-300 cursor-not-allowed'
+                    : 'bg-white hover:bg-slate-100/70 border-gray-200 text-gray-500 hover:text-gray-900 cursor-pointer'
+                }`}
+              >
+                <X className="w-4 h-4" /> Reset Form
+              </button>
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 pointer-events-none transition-all duration-150 origin-bottom bg-slate-900 text-white text-[10px] px-2.5 py-1.5 rounded-md shadow-md whitespace-nowrap z-50 font-sans font-medium border border-slate-800 text-center">
+                Clear all fields in this card form
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+              </div>
+            </div>
+
+            <div className="relative group">
+              <button
+                id="submit-add-card-btn"
+                type="submit"
+                disabled={isSavingCard}
+                className={`font-sans text-xs font-medium px-4 py-1.5 rounded-md flex items-center gap-1.5 transition-all ${
+                  isSavingCard 
+                    ? 'bg-slate-400 text-slate-100 cursor-not-allowed shadow-none'
+                    : 'bg-slate-800 hover:bg-slate-900 text-white cursor-pointer'
+                }`}
+              >
+                {isSavingCard ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                <span>{isSavingCard ? 'Saving Profile...' : 'Save Card Profile'}</span>
+              </button>
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 pointer-events-none transition-all duration-150 origin-bottom bg-slate-900 text-white text-[10px] px-2.5 py-1.5 rounded-md shadow-md whitespace-nowrap z-50 font-sans font-medium border border-slate-800 text-center">
+                Add this bank profile to your security registry
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+              </div>
+            </div>
           </div>
         </form>
       </div>

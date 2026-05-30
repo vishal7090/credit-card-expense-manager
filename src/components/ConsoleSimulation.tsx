@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScriptType, LogLine, AppConfig } from '../types';
-import { Play, Pause, RotateCcw, FastForward, Terminal, CheckCircle2, ShieldAlert, Cpu } from 'lucide-react';
+import { Play, Pause, RotateCcw, FastForward, Terminal, CheckCircle2, ShieldAlert, Cpu, Download } from 'lucide-react';
 
 interface ConsoleSimulationProps {
   config: AppConfig;
@@ -130,6 +130,19 @@ export default function ConsoleSimulation({ config, selectedScript }: ConsoleSim
     stepRef.current = 0;
     setMetrics({ examined: 0, created: 0, skipped: 0, sheetsIndex: 0 });
     if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const handleExportLogs = () => {
+    if (logs.length === 0) return;
+    const logText = logs.map(log => `[${log.timestamp}] [${log.level}] ${log.text}`).join('\n');
+    const blob = new Blob([logText], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `apps_script_simulator_${selectedScript}_logs.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const runStep = () => {
@@ -264,6 +277,19 @@ export default function ConsoleSimulation({ config, selectedScript }: ConsoleSim
               Fast
             </button>
           </div>
+
+          {/* Export Session Logs Button */}
+          <button
+            id="export-session-logs-btn"
+            type="button"
+            onClick={handleExportLogs}
+            disabled={logs.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 border border-slate-700 text-slate-350 hover:text-slate-100 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer disabled:cursor-not-allowed select-none font-sans"
+            title="Download current terminal logs as txt"
+          >
+            <Download className="w-3 h-3 text-indigo-400" />
+            <span>Export Logs</span>
+          </button>
         </div>
       </div>
 

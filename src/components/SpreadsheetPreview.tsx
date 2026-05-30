@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppConfig, Transaction } from '../types';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { LayoutGrid, CreditCard, Layers, Sparkles, TrendingUp, HelpCircle, Check, AlertTriangle, Download, X, Copy, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, CreditCard, Layers, Sparkles, TrendingUp, HelpCircle, Check, AlertTriangle, Download, X, Copy, FileText, ChevronLeft, ChevronRight, Eye, EyeOff, Settings, ArrowLeft, ArrowRight, GripVertical, ChevronDown, Search } from 'lucide-react';
 
 interface SpreadsheetPreviewProps {
   config: AppConfig;
@@ -82,35 +82,144 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+  const [exportDelimiter, setExportDelimiter] = useState<'comma' | 'semicolon' | 'tab'>('comma');
+  const [showConfigurator, setShowConfigurator] = useState<boolean>(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [colSearchQuery, setColSearchQuery] = useState<string>('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const handleExportCSV = () => {
+  useEffect(() => {
+    if (!isDropdownOpen) {
+      setColSearchQuery('');
+    }
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  const [columns, setColumnsState] = useState<Array<{ id: 'date' | 'merchant' | 'type' | 'amount' | 'hash'; label: string; visible: boolean }>>(() => {
+    try {
+      const saved = localStorage.getItem('spreadsheet_columns_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load columns from storage', e);
+    }
+    return [
+      { id: 'date', label: 'Date', visible: true },
+      { id: 'merchant', label: 'Merchant', visible: true },
+      { id: 'type', label: 'Type', visible: true },
+      { id: 'amount', label: 'Amount', visible: true },
+      { id: 'hash', label: 'Hash', visible: true }
+    ];
+  });
+
+  const setColumns = (newCols: Array<{ id: 'date' | 'merchant' | 'type' | 'amount' | 'hash'; label: string; visible: boolean }> | ((prev: Array<{ id: 'date' | 'merchant' | 'type' | 'amount' | 'hash'; label: string; visible: boolean }>) => Array<{ id: 'date' | 'merchant' | 'type' | 'amount' | 'hash'; label: string; visible: boolean }>)) => {
+    setColumnsState(prev => {
+      const next = typeof newCols === 'function' ? newCols(prev) : newCols;
+      try {
+        localStorage.setItem('spreadsheet_columns_v1', JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save columns to storage', e);
+      }
+      return next;
+    });
+  };
+
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    
+    const updated = [...columns];
+    const draggedItem = updated[draggedIndex];
+    updated.splice(draggedIndex, 1);
+    updated.splice(index, 0, draggedItem);
+    
+    setDraggedIndex(index);
+    setColumns(updated);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const generateExportContent = (delim: 'comma' | 'semicolon' | 'tab') => {
     const data = MOCK_LEDGER_DATA[activeTab as keyof typeof MOCK_LEDGER_DATA] || [];
-    if (data.length === 0) return;
+    if (data.length === 0) return { content: '', filename: '' };
 
-    // Generate CSV content
-    const headers = ['Row', 'Transaction Date', 'Merchant/Description', 'Type', 'Debit Amount', 'Deduplication Hash (MD5)', 'Status'];
-    const rows = data.map((row, idx) => [
-      String(idx + 2),
-      `"${row.date.replace(/"/g, '""')}"`,
-      `"${row.merchant.replace(/"/g, '""')}"`,
-      `"${row.type.replace(/"/g, '""')}"`,
-      row.type === 'Debit' ? row.amount : -row.amount,
-      `"${row.hash.replace(/"/g, '""')}"`,
-      row.isDuplicate ? '"Duplicate Skipped"' : '"Clean Ingested"'
-    ]);
+    const delimiterChar = delim === 'semicolon' ? ';' : delim === 'tab' ? '\t' : ',';
+    const extension = delim === 'tab' ? 'tsv' : 'csv';
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(e => e.join(','))
+    // Generate dynamic CSV/TSV headers based on active visible and ordered columns
+    const activeCols = columns.filter(col => col.visible);
+    
+    const headers = ['Row', ...activeCols.map(c => {
+      if (c.id === 'date') return 'Transaction Date';
+      if (c.id === 'merchant') return 'Merchant/Description';
+      if (c.id === 'type') return 'Type';
+      if (c.id === 'amount') return 'Debit Amount';
+      return 'Deduplication Hash (MD5)';
+    }), 'Status'];
+
+    const rows = data.map((row, idx) => {
+      const parts = [String(idx + 2)];
+      activeCols.forEach(col => {
+        if (col.id === 'date') {
+          parts.push(`"${row.date.replace(/"/g, '""')}"`);
+        } else if (col.id === 'merchant') {
+          parts.push(`"${row.merchant.replace(/"/g, '""')}"`);
+        } else if (col.id === 'type') {
+          parts.push(`"${row.type.replace(/"/g, '""')}"`);
+        } else if (col.id === 'amount') {
+          parts.push(String(row.type === 'Debit' ? row.amount : -row.amount));
+        } else if (col.id === 'hash') {
+          parts.push(`"${row.hash.replace(/"/g, '""')}"`);
+        }
+      });
+      parts.push(row.isDuplicate ? '"Duplicate Skipped"' : '"Clean Ingested"');
+      return parts;
+    });
+
+    const content = [
+      headers.join(delimiterChar),
+      ...rows.map(e => e.join(delimiterChar))
     ].join('\n');
 
-    setCsvPreviewContent(csvContent);
-    setCsvPreviewFilename(`ledger_${activeTab}_export.csv`);
+    const filename = `ledger_${activeTab}_export.${extension}`;
+    return { content, filename };
+  };
+
+  const handleExportCSV = () => {
+    const { content, filename } = generateExportContent(exportDelimiter);
+    if (!content) return;
+    setCsvPreviewContent(content);
+    setCsvPreviewFilename(filename);
     setIsCopied(false);
   };
 
   const triggerDownloadCSV = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const mimeType = filename.endsWith('.tsv') ? 'text/tab-separated-values;charset=utf-8;' : 'text/csv;charset=utf-8;';
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -428,7 +537,7 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
               {/* Table Header Controls */}
               <div className="bg-slate-50 border-b border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-sans text-xs font-bold text-gray-750 uppercase tracking-wide">
+                  <span className="font-sans text-xs font-bold text-gray-755 uppercase tracking-wide">
                     Sheet Ledger: {activeTab}
                   </span>
                   <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xxs">
@@ -436,27 +545,282 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
                   </span>
                 </div>
                 
-                <button
-                  id="export-ledger-csv-btn"
-                  type="button"
-                  onClick={handleExportCSV}
-                  className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-sans text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all border border-emerald-800/10 hover:border-emerald-850 self-start sm:self-auto shrink-0"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export to CSV</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto shrink-0">
+                  <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-250 border border-gray-200 px-2 py-1 rounded-lg transition-colors">
+                    <span className="text-[10px] font-sans font-semibold text-gray-500 uppercase tracking-widest pl-0.5">Delimiter:</span>
+                    <select
+                      id="export-delimiter-selector"
+                      value={exportDelimiter}
+                      onChange={(e) => setExportDelimiter(e.target.value as 'comma' | 'semicolon' | 'tab')}
+                      className="bg-transparent border-none p-0 pr-1 text-xs font-bold text-gray-755 focus:outline-hidden cursor-pointer"
+                    >
+                      <option value="comma">Comma (,)</option>
+                      <option value="semicolon">Semicolon (;)</option>
+                      <option value="tab">Tab (\t)</option>
+                    </select>
+                  </div>
+
+                  {/* Multi-select Dropdown to toggle column visibility */}
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      id="column-visibility-dropdown-trigger"
+                      type="button"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      className={`px-3 py-1.5 font-sans text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all border ${
+                        isDropdownOpen
+                          ? 'bg-slate-100 border-gray-350 text-gray-800'
+                          : 'bg-white hover:bg-slate-100/70 border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Columns ({columns.filter(c => c.visible).length}/{columns.length})</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isDropdownOpen && (
+                      <div 
+                        id="column-visibility-dropdown-menu" 
+                        className="absolute right-0 mt-1.5 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 z-50 animate-fadeIn"
+                      >
+                        <div className="px-3 py-1 border-b border-gray-100 mb-1">
+                          <span className="text-[10px] font-sans font-bold text-gray-400 uppercase tracking-wider">Toggle Columns</span>
+                        </div>
+                        
+                        {/* Mini Search Bar */}
+                        <div className="px-2.5 pb-2 pt-0.5 border-b border-gray-100 mb-1">
+                          <div className="relative flex items-center">
+                            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={colSearchQuery}
+                              onChange={(e) => setColSearchQuery(e.target.value)}
+                              placeholder="Search columns..."
+                              className="w-full pl-7 pr-6 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-sans text-gray-700 placeholder-gray-400 focus:outline-hidden focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all text-[11px]"
+                            />
+                            {colSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setColSearchQuery('')}
+                                className="absolute right-1.5 p-0.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col max-h-[160px] overflow-y-auto">
+                          {columns.filter(col => col.label.toLowerCase().includes(colSearchQuery.toLowerCase())).length === 0 ? (
+                            <div className="px-3 py-3 text-center text-[10px] text-gray-400 font-sans">
+                              No results found
+                            </div>
+                          ) : (
+                            columns
+                              .filter(col => col.label.toLowerCase().includes(colSearchQuery.toLowerCase()))
+                              .map((col) => (
+                                <label
+                                  key={col.id}
+                                  className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 transition-colors cursor-pointer select-none text-xs font-medium text-gray-700"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={col.visible}
+                                    onChange={() => {
+                                      const updated = columns.map(c => {
+                                        if (c.id === col.id) {
+                                          const otherVisible = columns.filter(other => other.id !== col.id && other.visible).length > 0;
+                                          return { ...c, visible: otherVisible ? !c.visible : c.visible };
+                                        }
+                                        return c;
+                                      });
+                                      setColumns(updated);
+                                    }}
+                                    className="rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 accent-emerald-600 h-3.5 w-3.5 cursor-pointer"
+                                  />
+                                  <span className="font-sans">{col.label}</span>
+                                </label>
+                              ))
+                          )}
+                        </div>
+                        
+                        <div className="px-3 py-1 border-t border-gray-100 mt-1.5 pt-1.5 flex justify-between items-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setColumns(columns.map(c => ({ ...c, visible: true })));
+                            }}
+                            className="text-[10px] font-sans font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                          >
+                            Show All
+                          </button>
+                          <span className="text-[9px] text-gray-400 font-sans">Real-time sync</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    id="toggle-column-configurator-btn"
+                    type="button"
+                    onClick={() => setShowConfigurator(!showConfigurator)}
+                    className={`px-3 py-1.5 font-sans text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all border ${
+                      showConfigurator
+                        ? 'bg-slate-800 border-slate-900 text-white'
+                        : 'bg-white hover:bg-slate-100/70 border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Configure Columns</span>
+                  </button>
+
+                  <button
+                    id="export-ledger-csv-btn"
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-sans text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all border border-emerald-800/10 hover:border-emerald-850 shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export to {exportDelimiter === 'tab' ? 'TSV' : 'CSV'}</span>
+                  </button>
+                </div>
               </div>
+                           {/* Collapsible Column Configurator Panel */}
+              {showConfigurator && (
+                <div id="column-reorder-toggle-panel" className="bg-slate-50 border-b border-gray-250 p-4 animate-fadeIn transition-all">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <div>
+                      <h5 className="font-sans font-bold text-xs text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+                        <Settings className="w-3.5 h-3.5 text-slate-600 animate-spin-slow" />
+                        Spreadsheet Column Configuration
+                      </h5>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Drag & drop the column blocks (using the grip handles) or use the left/right arrows to rearrange columns. Toggle the eye icon to hide/show. Layout is persisted as default for future exports.</p>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setColumns([
+                          { id: 'date', label: 'Date', visible: true },
+                          { id: 'merchant', label: 'Merchant', visible: true },
+                          { id: 'type', label: 'Type', visible: true },
+                          { id: 'amount', label: 'Amount', visible: true },
+                          { id: 'hash', label: 'Hash', visible: true }
+                        ]);
+                      }}
+                      className="px-2 py-1 text-[10px] font-sans font-semibold bg-white border border-gray-200 hover:bg-gray-100 rounded text-slate-600 transition-all cursor-pointer self-start"
+                    >
+                      Reset Defaults
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    {columns.map((col, index) => {
+                      const isLeftDisabled = index === 0;
+                      const isRightDisabled = index === columns.length - 1;
+                      return (
+                        <div 
+                          key={col.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all cursor-grab active:cursor-grabbing select-none ${
+                            draggedIndex === index
+                              ? 'bg-blue-50 border-blue-300 opacity-60 scale-95 shadow-inner'
+                              : col.visible 
+                                ? 'bg-white border-gray-200 hover:border-gray-300 shadow-xxs' 
+                                : 'bg-gray-100 border-gray-150 text-gray-400'
+                          }`}
+                        >
+                          {/* Drag handle */}
+                          <div className="flex items-center text-gray-400 shrink-0">
+                            <GripVertical className="w-3.5 h-3.5" />
+                          </div>
+
+                          {/* Toggle visibility */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...columns];
+                              updated[index].visible = !updated[index].visible;
+                              if (updated.filter(c => c.visible).length === 0) {
+                                return; // enforce at least one column visible
+                              }
+                              setColumns(updated);
+                            }}
+                            title={col.visible ? 'Hide column' : 'Show column'}
+                            className={`p-1 rounded-md transition-colors cursor-pointer ${
+                              col.visible ? 'hover:bg-slate-105 text-slate-700' : 'hover:bg-slate-205 text-gray-400'
+                            }`}
+                          >
+                            {col.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <span className="text-xs font-semibold font-sans min-w-[65px]">
+                            {col.label}
+                          </span>
+
+                          {/* Reorder Buttons */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isLeftDisabled}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const updated = [...columns];
+                                const temp = updated[index];
+                                updated[index] = updated[index - 1];
+                                updated[index - 1] = temp;
+                                setColumns(updated);
+                              }}
+                              title="Move left"
+                              className="p-1 rounded-md bg-slate-50 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 cursor-pointer"
+                            >
+                              <ArrowLeft className="w-3 h-3 text-slate-600" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isRightDisabled}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const updated = [...columns];
+                                const temp = updated[index];
+                                updated[index] = updated[index + 1];
+                                updated[index + 1] = temp;
+                                setColumns(updated);
+                              }}
+                              title="Move right"
+                              className="p-1 rounded-md bg-slate-50 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200 cursor-pointer"
+                            >
+                              <ArrowRight className="w-3 h-3 text-slate-600" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse font-sans text-xs">
                   <thead>
                     <tr className="bg-gray-100 text-gray-600 border-b border-gray-200">
                       <th className="p-2 border-r border-gray-200 text-center text-xxs font-mono text-gray-400 w-10">Row</th>
-                      <th className="p-3 border-r border-gray-250 font-semibold text-gray-700">Transaction Date</th>
-                      <th className="p-3 border-r border-gray-250 font-semibold text-gray-700">Merchant/Description</th>
-                      <th className="p-3 border-r border-gray-250 font-semibold text-gray-700">Type</th>
-                      <th className="p-3 border-r border-gray-250 font-semibold text-gray-700 text-right">Debit amount ($)</th>
-                      <th className="p-3 font-semibold text-gray-700">Deduplication Hash (MD5)</th>
+                      {columns.filter(c => c.visible).map(c => {
+                        let label = 'Column';
+                        let alignClass = '';
+                        if (c.id === 'date') label = 'Transaction Date';
+                        else if (c.id === 'merchant') label = 'Merchant/Description';
+                        else if (c.id === 'type') label = 'Type';
+                        else if (c.id === 'amount') { label = 'Debit amount ($)'; alignClass = 'text-right'; }
+                        else if (c.id === 'hash') label = 'Deduplication Hash (MD5)';
+                        
+                        return (
+                          <th key={c.id} className={`p-3 border-r border-gray-250 font-semibold text-gray-700 ${alignClass}`}>
+                            {label}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -472,28 +836,47 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
                           }`}
                         >
                           <td className="p-2 text-center font-mono text-xxs text-gray-400 bg-gray-50 border-r border-gray-200">{absoluteRowIndex}</td>
-                          <td className="p-3 border-r border-gray-200 font-mono">{row.date}</td>
-                          <td className="p-3 border-r border-gray-200 font-medium">
-                            <div className="flex items-center justify-between">
-                              <span>{row.merchant}</span>
-                              {row.isDuplicate && (
-                                <span className="bg-red-100 text-red-800 text-[9px] font-bold px-1.5 py-0.5 rounded-sm flex items-center gap-1">
-                                  <AlertTriangle className="w-2.5 h-2.5" /> Duplicate Skipped
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3 border-r border-gray-200 text-center">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                              row.type === 'Debit' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-850'
-                            }`}>
-                              {row.type}
-                            </span>
-                          </td>
-                          <td className="p-3 border-r border-gray-200 text-right font-mono font-medium">
-                            {row.type === 'Debit' ? formatCurrency(row.amount) : `-${formatCurrency(row.amount)}`}
-                          </td>
-                          <td className="p-3 font-mono text-[10px] text-gray-400">{row.hash}</td>
+                          {columns.filter(c => c.visible).map(c => {
+                            if (c.id === 'date') {
+                              return <td key="date" className="p-3 border-r border-gray-200 font-mono">{row.date}</td>;
+                            }
+                            if (c.id === 'merchant') {
+                              return (
+                                <td key="merchant" className="p-3 border-r border-gray-200 font-medium">
+                                  <div className="flex items-center justify-between">
+                                    <span>{row.merchant}</span>
+                                    {row.isDuplicate && (
+                                      <span className="bg-red-100 text-red-800 text-[9px] font-bold px-1.5 py-0.5 rounded-sm flex items-center gap-1">
+                                        <AlertTriangle className="w-2.5 h-2.5" /> Duplicate Skipped
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            }
+                            if (c.id === 'type') {
+                              return (
+                                <td key="type" className="p-3 border-r border-gray-200 text-center">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                    row.type === 'Debit' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-850'
+                                  }`}>
+                                    {row.type}
+                                  </span>
+                                </td>
+                              );
+                            }
+                            if (c.id === 'amount') {
+                              return (
+                                <td key="amount" className="p-3 border-r border-gray-200 text-right font-mono font-medium">
+                                  {row.type === 'Debit' ? formatCurrency(row.amount) : `-${formatCurrency(row.amount)}`}
+                                </td>
+                              );
+                            }
+                            if (c.id === 'hash') {
+                              return <td key="hash" className="p-3 font-mono text-[10px] text-gray-400">{row.hash}</td>;
+                            }
+                            return null;
+                          })}
                         </tr>
                       );
                     })}
@@ -605,15 +988,35 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
 
               {/* Modal Body / Scrollable CSV Code Viewer */}
               <div className="p-5 overflow-y-auto flex-1 space-y-3">
-                <div className="flex items-center justify-between text-xs font-medium text-gray-500">
-                  <span className="font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200/50">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-medium text-gray-500">
+                  <div className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-gray-200 px-2 py-1 rounded-lg transition-colors">
+                    <span className="text-[10px] font-sans font-semibold text-gray-500 uppercase tracking-widest pl-0.5">Delimiter:</span>
+                    <select
+                      id="modal-export-delimiter-selector"
+                      value={exportDelimiter}
+                      onChange={(e) => {
+                        const newDelim = e.target.value as 'comma' | 'semicolon' | 'tab';
+                        setExportDelimiter(newDelim);
+                        const { content, filename } = generateExportContent(newDelim);
+                        setCsvPreviewContent(content);
+                        setCsvPreviewFilename(filename);
+                        setIsCopied(false);
+                      }}
+                      className="bg-transparent border-none p-0 pr-1 text-xs font-bold text-gray-755 focus:outline-hidden cursor-pointer"
+                    >
+                      <option value="comma">Comma (,)</option>
+                      <option value="semicolon">Semicolon (;)</option>
+                      <option value="tab">Tab (\t)</option>
+                    </select>
+                  </div>
+                  <span className="font-mono bg-slate-100 text-slate-705 px-2 py-1 rounded border border-slate-200/50 self-start sm:self-auto text-[11px]">
                     Filename: {csvPreviewFilename}
                   </span>
                   <button
                     id="csv-preview-copy-btn"
                     type="button"
                     onClick={() => handleCopyToClipboard(csvPreviewContent)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-slate-50 text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg text-xs font-semibold cursor-pointer shadow-3xs transition-all"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-slate-50 text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg text-xs font-semibold cursor-pointer shadow-3xs transition-all self-start sm:self-auto"
                   >
                     {isCopied ? (
                       <>
@@ -623,7 +1026,7 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Copy CSV</span>
+                        <span>Copy {exportDelimiter === 'tab' ? 'TSV' : 'CSV'}</span>
                       </>
                     )}
                   </button>
@@ -663,7 +1066,7 @@ export default function SpreadsheetPreview({ config }: SpreadsheetPreviewProps) 
                   className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold cursor-pointer border border-emerald-800 shadow-sm transition-all hover:border-emerald-850 flex items-center gap-1.5 shadow-3xs font-sans"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV File</span>
+                  <span>Download {csvPreviewFilename.endsWith('.tsv') ? 'TSV' : 'CSV'} File</span>
                 </button>
               </div>
 
