@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppConfig, CardProfile } from '../types';
-import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check } from 'lucide-react';
+import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check, Search, X } from 'lucide-react';
 
 // Bank icon/logo representations for visual registry distinction
 const getBankLogoDetails = (bankName: string) => {
@@ -209,6 +209,8 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
   const [testingCardId, setTestingCardId] = useState<string | null>(null);
   const [testSuccessState, setTestSuccessState] = useState<'testing' | 'success' | 'error' | null>(null);
 
+  const [cardFilter, setCardFilter] = useState('');
+
   const [masterFolder, setMasterFolder] = useState(config.masterFolder);
   const [gmailSearchQuery, setGmailSearchQuery] = useState(config.gmailSearchQuery);
   const [processedLabel, setProcessedLabel] = useState(config.processedLabel);
@@ -299,11 +301,21 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
     });
   };
 
+  const filteredCards = config.cards.filter(card => {
+    const query = cardFilter.toLowerCase().trim();
+    if (!query) return true;
+    return (
+      card.bankName.toLowerCase().includes(query) ||
+      card.cardNumber.includes(query) ||
+      getBankLogoDetails(card.bankName).fullName.toLowerCase().includes(query)
+    );
+  });
+
   return (
     <div id="config-panel-container" className="space-y-6">
       {/* CARD REGISTRY CONTAINER */}
       <div id="card-registry-card" className="bg-white rounded-xl border border-gray-100 shadow-xs p-6 space-y-6">
-        <div id="registry-header-container" className="flex items-center justify-between border-b border-gray-100 pb-4">
+        <div id="registry-header-container" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
               <CreditCard className="w-5 h-5" />
@@ -313,14 +325,36 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
               <p className="font-sans text-xs text-gray-500 mt-1">Configure active card profiles and decryption statement password mapping keys.</p>
             </div>
           </div>
-          <span className="bg-blue-100 text-blue-700 font-mono text-xs font-semibold px-2.5 py-1 rounded-full">
-            {config.cards.length} Registered
-          </span>
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:min-w-[280px]">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                id="card-search-input"
+                type="text"
+                placeholder="Filter cards by bank/digits..."
+                value={cardFilter}
+                onChange={(e) => setCardFilter(e.target.value)}
+                className="w-full bg-slate-50 hover:bg-slate-100/50 border border-gray-200 hover:border-gray-300 focus:bg-white rounded-lg pl-8 pr-8 py-1.5 font-sans text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden text-gray-700 placeholder-gray-400 transition-all font-medium"
+              />
+              {cardFilter && (
+                <button
+                  onClick={() => setCardFilter('')}
+                  type="button"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <span className="bg-blue-100 text-blue-700 font-mono text-xs font-semibold px-2.5 py-1 rounded-full shrink-0">
+              {filteredCards.length} of {config.cards.length}
+            </span>
+          </div>
         </div>
 
         {/* Existing Card Profiles Grid */}
         <div id="reg-cards-grid" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {config.cards.map((card) => {
+          {filteredCards.map((card) => {
             const details = getBankLogoDetails(card.bankName);
             const tierInfo = getCardTierInfo(card.bankName);
             const WatermarkIcon = details.icon;
@@ -346,36 +380,41 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
 
                 {/* --- HOVER QUICK ACTIONS HUD OVERLAY --- */}
                 {editingCardId !== card.id && testingCardId !== card.id && (
-                  <div className="absolute inset-0 bg-slate-900/85 backdrop-blur-xs flex items-center justify-center gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingCardId(card.id);
-                        setEditBankName(card.bankName);
-                        setEditCardNumber(card.cardNumber);
-                        setEditPassword(card.password || '');
-                      }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xxs font-bold flex items-center gap-1.5 border border-slate-600 shadow-sm hover:scale-105 active:scale-95 transition-all duration-300 text-[11px] transform translate-y-3 group-hover:translate-y-0"
-                    >
-                      <Key className="w-3.5 h-3.5 text-amber-400" />
-                      Edit Profile
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTestingCardId(card.id);
-                        setTestSuccessState('testing');
-                        setTimeout(() => {
-                          setTestSuccessState(Math.random() > 0.15 ? 'success' : 'error');
-                        }, 1200);
-                      }}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-550 text-white rounded-md text-xxs font-bold flex items-center gap-1.5 shadow-xs border border-indigo-500 hover:scale-105 active:scale-95 transition-all duration-300 text-[11px] transform translate-y-3 group-hover:translate-y-0"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                      Test Connection
-                    </button>
+                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-[6px] flex flex-col items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-all duration-350 ease-out z-20">
+                    <div className="text-[10px] font-sans font-medium text-slate-300/80 tracking-wider uppercase transform -translate-y-1 group-hover:translate-y-0 transition-all duration-350 delay-75">
+                      Quick Profile Actions
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCardId(card.id);
+                          setEditBankName(card.bankName);
+                          setEditCardNumber(card.cardNumber);
+                          setEditPassword(card.password || '');
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-800/90 hover:bg-slate-750 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 shadow-md hover:scale-105 active:scale-95 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 delay-75 cursor-pointer"
+                      >
+                        <Key className="w-3.5 h-3.5 text-amber-400" />
+                        Edit Profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTestingCardId(card.id);
+                          setTestSuccessState('testing');
+                          setTimeout(() => {
+                            setTestSuccessState(Math.random() > 0.15 ? 'success' : 'error');
+                          }, 1200);
+                        }}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md border border-indigo-500/50 hover:scale-105 active:scale-95 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 delay-100 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                        Test Connection
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -566,6 +605,14 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
           {config.cards.length === 0 && (
             <div id="no-cards-notice" className="col-span-2 text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-500 text-xs">
               No custom card accounts registered. Please register a card profile to populate.
+            </div>
+          )}
+
+          {config.cards.length > 0 && filteredCards.length === 0 && (
+            <div id="no-cards-match-notice" className="col-span-2 flex flex-col items-center justify-center text-center py-10 px-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-500 text-xs">
+              <Search className="w-6 h-6 text-slate-300 mb-2" />
+              <p className="font-sans text-xs font-semibold text-gray-600">No profile matches search</p>
+              <p className="font-sans text-[11px] text-gray-400 mt-1">Try searching for another bank name or specific 4-digit signature.</p>
             </div>
           )}
         </div>
