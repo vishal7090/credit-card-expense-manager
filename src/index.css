@@ -22,6 +22,29 @@
   }
 }
 
+/* Search input focus transitions (scale-x and box-shadow pulse) */
+#card-search-input {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease, background-color 0.2s ease;
+  transform-origin: center;
+}
+
+#card-search-input:focus {
+  transform: scaleX(1.03);
+  border-color: #3b82f6;
+  background-color: #ffffff;
+  outline: none;
+  animation: searchInputBoxShadowPulse 2s infinite ease-in-out;
+}
+
+@keyframes searchInputBoxShadowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.35);
+  }
+}
+
 /* Custom dark scrollbar for terminal elements */
 ::-webkit-scrollbar {
   width: 6px;

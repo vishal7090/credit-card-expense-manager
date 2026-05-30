@@ -34,33 +34,33 @@ export default function App() {
       
       {/* 1. TOP PORTFOLIO APPLICATION HEADER */}
       <header id="application-navbar" className="bg-white border-b border-gray-100 py-4 px-6 md:px-8 shadow-3xs sticky top-0 z-40">
-        <div className="max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           
-          <div className="flex items-center gap-4.5">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-4.5">
             <div className="w-11 h-11 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0">
               <span className="font-mono text-base font-bold scale-110">⚡</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center md:items-start">
+              <div className="flex flex-col sm:flex-row items-center gap-2">
                 <h1 className="font-sans font-bold text-gray-850 text-lg leading-snug tracking-tight">
                   Google Apps Script Financial Suite
                 </h1>
-                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                   <Sparkles className="w-3 h-3 text-amber-600 animate-spin" /> Production Grade
                 </span>
               </div>
-              <p className="font-sans text-xs text-gray-500 mt-0.5">
+              <p className="font-sans text-xs text-gray-500 mt-1 max-w-xl">
                 Dynamic builder &amp; visual execution playground for scanning GmailStatements, decryption card backups, and sheets ledger automation.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
             <a 
               href="https://script.google.com" 
               target="_blank" 
               rel="noreferrer" 
-              className="px-3.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-650 hover:text-gray-900 hover:bg-gray-50 transition-all flex items-center gap-1.5 cursor-pointer shadow-3xs"
+              className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-650 hover:text-gray-900 hover:bg-gray-50 transition-all flex items-center gap-1.5 cursor-pointer shadow-3xs"
             >
               <span>script.google.com</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -70,7 +70,7 @@ export default function App() {
               href="https://drive.google.com" 
               target="_blank" 
               rel="noreferrer" 
-              className="px-3.5 py-1.5 bg-slate-850 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-3xs"
+              className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-slate-850 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-3xs"
             >
               <span>Google Drive Ingress</span>
               <ExternalLink className="w-3.5 h-3.5" />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppConfig, CardProfile } from '../types';
-import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check, Search, X } from 'lucide-react';
+import { Plus, Trash2, Key, FolderOpen, Mail, ShieldAlert, FileSpreadsheet, CreditCard, Landmark, Sparkles, Building, Coins, Globe, Compass, Star, Check, Search, X, ChevronDown, Download, FileJson } from 'lucide-react';
 
 // Bank icon/logo representations for visual registry distinction
 const getBankLogoDetails = (bankName: string) => {
@@ -198,6 +198,7 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
   const [newBank, setNewBank] = useState('HDFC');
   const [newCardNum, setNewCardNum] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [cardNumError, setCardNumError] = useState('');
 
   // Inline editing states for quick actions without scrolling down or up the form
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -210,6 +211,20 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
   const [testSuccessState, setTestSuccessState] = useState<'testing' | 'success' | 'error' | null>(null);
 
   const [cardFilter, setCardFilter] = useState('');
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+
+  const handleExportCards = (cardsToExport: CardProfile[], filename: string) => {
+    const dataBlob = new Blob([JSON.stringify(cardsToExport, null, 2)], { type: 'application/json' });
+    const jsonUrl = URL.createObjectURL(dataBlob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", jsonUrl);
+    downloadAnchor.setAttribute("download", filename);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    URL.revokeObjectURL(jsonUrl);
+  };
 
   const [masterFolder, setMasterFolder] = useState(config.masterFolder);
   const [gmailSearchQuery, setGmailSearchQuery] = useState(config.gmailSearchQuery);
@@ -256,14 +271,20 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
 
   const handleAddCard = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!/^\d{4}$/.test(newCardNum)) {
-      alert('Card number must be exactly 4 digits representing account signature (e.g. 6171).');
+    
+    // Custom regex pattern to match exactly 4 numeric characters
+    const numericFourDigitsPattern = /^[0-9]{4}$/;
+    
+    if (!numericFourDigitsPattern.test(newCardNum)) {
+      setCardNumError('Last 4 Digits must be exactly 4 numeric characters (e.g. 4991).');
       return;
     }
     if (config.cards.some(c => c.cardNumber === newCardNum)) {
-      alert('A card with these last 4 digits already exists in the registry.');
+      setCardNumError('A card profile with these last 4 digits already exists in the registry.');
       return;
     }
+
+    setCardNumError('');
 
     const newCard: CardProfile = {
       id: Math.random().toString(36).substr(2, 9),
@@ -325,8 +346,8 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
               <p className="font-sans text-xs text-gray-500 mt-1">Configure active card profiles and decryption statement password mapping keys.</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto sm:min-w-[280px]">
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:min-w-[420px] flex-wrap sm:flex-nowrap">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 id="card-search-input"
@@ -334,23 +355,163 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
                 placeholder="Filter cards by bank/digits..."
                 value={cardFilter}
                 onChange={(e) => setCardFilter(e.target.value)}
-                className="w-full bg-slate-50 hover:bg-slate-100/50 border border-gray-200 hover:border-gray-300 focus:bg-white rounded-lg pl-8 pr-8 py-1.5 font-sans text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden text-gray-700 placeholder-gray-400 transition-all font-medium"
+                className="w-full bg-slate-50 hover:bg-slate-100/50 border border-gray-200 hover:border-gray-300 focus:bg-white rounded-lg pl-8 pr-16 py-1.5 font-sans text-xs focus:outline-hidden text-gray-700 placeholder-gray-400 transition-all font-medium"
               />
               {cardFilter && (
                 <button
+                  id="card-search-clear-button"
                   onClick={() => setCardFilter('')}
                   type="button"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-slate-200/70 hover:bg-slate-200 text-slate-700 hover:text-slate-900 font-sans text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-xs border border-slate-300/30"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-2.5 h-2.5" />
+                  Clear
                 </button>
               )}
             </div>
             <span className="bg-blue-100 text-blue-700 font-mono text-xs font-semibold px-2.5 py-1 rounded-full shrink-0">
               {filteredCards.length} of {config.cards.length}
             </span>
+
+            {/* EXPANDABLE JSON EXPORT DROPDOWN MENU */}
+            <div className="relative shrink-0">
+              <button
+                id="export-config-dropdown-btn"
+                type="button"
+                onClick={() => setIsExportOpen(!isExportOpen)}
+                className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-gray-200 hover:border-gray-300 text-gray-700 hover:text-gray-900 font-sans text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all active:scale-95"
+              >
+                <Download className="w-3.5 h-3.5 text-gray-500" />
+                <span>Export</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isExportOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isExportOpen && (
+                <>
+                  <div 
+                    id="export-dropdown-backdrop"
+                    className="fixed inset-0 z-30" 
+                    onClick={() => setIsExportOpen(false)}
+                  />
+                  <div 
+                    id="export-dropdown-menu"
+                    className="absolute right-0 mt-1.5 w-52 bg-white border border-gray-150 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in-50 slide-in-from-top-1 duration-120 font-sans"
+                  >
+                    <div className="px-3 py-1 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                      Export Registry Config
+                    </div>
+                    
+                    <button
+                      id="export-all-json-option"
+                      type="button"
+                      onClick={() => {
+                        handleExportCards(config.cards, 'all_cards_config.json');
+                        setIsExportOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-slate-50 hover:text-gray-900 transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <FileJson className="w-3.5 h-3.5 text-blue-500" />
+                      <div className="flex-1">
+                        <div className="font-semibold">Export All Cards</div>
+                        <div className="text-[10px] text-gray-400">All {config.cards.length} registered profiles</div>
+                      </div>
+                    </button>
+
+                    <button
+                      id="export-filtered-json-option"
+                      type="button"
+                      disabled={filteredCards.length === 0}
+                      onClick={() => {
+                        handleExportCards(filteredCards, 'filtered_cards_config.json');
+                        setIsExportOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-slate-50 hover:text-gray-900 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FileJson className="w-3.5 h-3.5 text-indigo-500" />
+                      <div className="flex-1">
+                        <div className="font-semibold">Export Filtered</div>
+                        <div className="text-[10px] text-gray-400">Matching filters ({filteredCards.length})</div>
+                      </div>
+                    </button>
+
+                    <button
+                      id="export-active-json-option"
+                      type="button"
+                      disabled={config.cards.filter(c => c.isActive).length === 0}
+                      onClick={() => {
+                        const activeCards = config.cards.filter(c => c.isActive);
+                        handleExportCards(activeCards, 'active_cards_config.json');
+                        setIsExportOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-slate-50 hover:text-gray-900 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FileJson className="w-3.5 h-3.5 text-emerald-500" />
+                      <div className="flex-1">
+                        <div className="font-semibold">Export Active Cards</div>
+                        <div className="text-[10px] text-gray-400">Currently active ({config.cards.filter(c => c.isActive).length})</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* DELETE ALL REGISTERED CARDS */}
+            <button
+              id="delete-all-cards-btn"
+              type="button"
+              disabled={config.cards.length === 0}
+              onClick={() => setShowDeleteAllConfirm(true)}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 disabled:bg-gray-50 border border-red-200 hover:border-red-300 disabled:border-gray-200 text-red-700 hover:text-red-900 disabled:text-gray-400 font-sans text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all active:scale-95 disabled:cursor-not-allowed disabled:shadow-none shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete All</span>
+            </button>
           </div>
         </div>
+
+        {/* REUSABLE DELETE ALL CONFIRMATION DIALOG MODAL */}
+        {showDeleteAllConfirm && (
+          <div id="delete-all-confirm-modal" className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl border border-gray-150 shadow-xl max-w-sm w-full mx-4 overflow-hidden transform animate-in zoom-in-95 duration-200 p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-red-50 text-red-600 rounded-lg shrink-0">
+                  <Trash2 className="w-5 h-5 animate-bounce" />
+                </div>
+                <div>
+                  <h4 className="font-sans font-semibold text-gray-800 text-sm">Clear Card Registry?</h4>
+                  <p className="font-sans text-xs text-gray-500 mt-1">
+                    This will permanently delete all <strong className="text-gray-700">{config.cards.length} registered cards</strong> from the local execution config. This action is irreversible.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-gray-100">
+                <button
+                  id="delete-all-cancel-btn"
+                  type="button"
+                  onClick={() => setShowDeleteAllConfirm(false)}
+                  className="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold cursor-pointer border border-gray-200 transition-all font-sans"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="delete-all-confirm-btn"
+                  type="button"
+                  onClick={() => {
+                    onUpdateConfig({
+                      ...config,
+                      cards: [],
+                    });
+                    setShowDeleteAllConfirm(false);
+                  }}
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold cursor-pointer border border-red-600 shadow-sm transition-all font-sans"
+                >
+                  Yes, Delete All
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Existing Card Profiles Grid */}
         <div id="reg-cards-grid" className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -647,9 +808,36 @@ export default function ConfigurationPanel({ config, onUpdateConfig }: Configura
                 required 
                 placeholder="4991"
                 value={newCardNum}
-                onChange={(e) => setNewCardNum(e.target.value.replace(/\D/g, ''))}
-                className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 placeholder-gray-450 focus:border-blue-500 focus:outline-hidden"
+                pattern="[0-9]{4}"
+                title="Must be exactly 4 digits represented as numerical figures (e.g., 4991)."
+                onChange={(e) => {
+                  const val = e.target.value;
+                  // Specially prevent non-numeric input using regex replace
+                  const numericFiltered = val.replace(/[^0-9]/g, '');
+                  setNewCardNum(numericFiltered);
+                  
+                  // Validation message feedback
+                  if (numericFiltered === '') {
+                    setCardNumError('');
+                  } else if (!/^[0-9]{4}$/.test(numericFiltered)) {
+                    setCardNumError('Last 4 Digits must be exactly four numeric characters.');
+                  } else if (config.cards.some(c => c.cardNumber === numericFiltered)) {
+                    setCardNumError('A profile with these last 4 digits already exists.');
+                  } else {
+                    setCardNumError('');
+                  }
+                }}
+                className={`w-full rounded-md border bg-white px-3 py-1.5 text-xs focus:outline-hidden transition-all ${
+                  cardNumError 
+                    ? 'border-red-400 text-red-900 placeholder-red-300 focus:border-red-500' 
+                    : 'border-gray-200 text-gray-700 placeholder-gray-450 focus:border-blue-500'
+                }`}
               />
+              {cardNumError && (
+                <p id="card-last4-error-msg" className="text-xxs text-red-600 font-semibold mt-1 flex items-center gap-1 animate-pulse">
+                  <span>⚠️</span> {cardNumError}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xxs font-semibold text-gray-500 mb-1">Decryption Password (Optional)</label>
