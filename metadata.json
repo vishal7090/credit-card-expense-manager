@@ -1,0 +1,6 @@
+{
+  "name": "Google Apps Script Card Expense Suite",
+  "description": "An interactive studio to configure, simulate, and download custom Google Apps Script codebases for credit card statement ingestion, PDF drive organization, and automated Google Sheets expense ledger journaling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
